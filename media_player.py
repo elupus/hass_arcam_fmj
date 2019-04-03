@@ -21,6 +21,8 @@ async def async_setup_platform(hass,
                                discovery_info=None):
 
 
-    from .entities.media_player import ArcamFmj
-
-    async_add_devices([ArcamFmj(config)])
+    from .entities.media_player import setup
+    await setup(hass,
+                config,
+                async_add_devices,
+                discovery_info=discovery_info)

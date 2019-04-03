@@ -1,4 +1,6 @@
 """Implementation of a arcam media player entity"""
+import asyncio
+import logging
 
 from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerDevice
 from homeassistant.components.media_player.const import (
@@ -12,28 +14,71 @@ from arcam.fmj.client import Client
 from arcam.fmj.state import State
 from arcam.fmj import SourceCodes, IncomingAudioFormat, DecodeMode2CH, DecodeModeMCH
 
+from .const import SIGNAL_CLIENT_STARTED, SIGNAL_CLIENT_STOPPED, SIGNAL_CLIENT_DATA
+
+_LOGGER = logging.getLogger(__name__)
+
+async def setup(hass,
+                config,
+                async_add_devices,
+                discovery_info=None):
+
+    client = Client(
+        config[CONF_HOST],
+        config[CONF_PORT])
+
+    #hass.async_add_job(run_client(hass, client))
+    asyncio.ensure_future(run_client(hass, client))
+
+    async_add_devices([
+        ArcamFmj(client,
+                 config[CONF_NAME],
+                 config[CONF_ZONE])])
+
+async def run_client(hass, client):
+    def _listen(packet):
+        hass.helpers.dispatcher.async_dispatcher_send(
+            SIGNAL_CLIENT_DATA, client._host)
+
+    while True:
+        try:
+            await client.start()
+
+            hass.helpers.dispatcher.async_dispatcher_send(
+                SIGNAL_CLIENT_STARTED, client._host)
+
+            client._listen.add(_listen)
+
+            await client.process()
+
+            client._listen.remove(_listen)
+
+            hass.helpers.dispatcher.async_dispatcher_send(
+                SIGNAL_CLIENT_STOPPED, client._host)
+        except (ConnectionError, OSError):
+            _LOGGER.debug("Connection failed")
+            await asyncio.sleep(1.0)
+            pass
+        finally:
+            await client.stop()
+
+
+
 class ArcamFmj(MediaPlayerDevice):
     """Representation of a media device."""
 
-    def __init__(self, config):
+    def __init__(self, client: Client, name: str, zone: int):
         """Initialize device."""
         super().__init__()
-        self._client = Client(
-            config[CONF_HOST],
-            config[CONF_PORT])
-        self._state = State(self._client, config[CONF_ZONE])
-        self._name = config[CONF_NAME]
+        self._client = client
+        self._state = State(client, zone)
+        self._name = name
         self._support = (SUPPORT_SELECT_SOURCE |
                          SUPPORT_TURN_OFF |
                          SUPPORT_VOLUME_SET |
                          SUPPORT_SELECT_SOUND_MODE |
                          SUPPORT_VOLUME_MUTE |
                          SUPPORT_VOLUME_STEP)
-
-        def _listen(packet):
-            self.async_schedule_update_ha_state()
-
-        self._client._listen.add(_listen)
 
     def _get_2ch(self):
         """Return if source is 2 channel or not"""
@@ -64,14 +109,30 @@ class ArcamFmj(MediaPlayerDevice):
         """Flag media player features that are supported."""
         return self._support
 
+    async def async_added_to_hass(self):
+        """Once registed add listener for events."""
+
+        def _data(host):
+            if host == self._client._host:
+                self.async_schedule_update_ha_state()
+
+        async def _update():
+            await self._state.update()
+            self.async_schedule_update_ha_state()
+
+        def _started(host):
+            if host == self._client._host:
+                self.hass.async_add_job(_update())
+
+        self.hass.helpers.dispatcher.async_dispatcher_connect(
+            SIGNAL_CLIENT_DATA, _data)
+
+        self.hass.helpers.dispatcher.async_dispatcher_connect(
+            SIGNAL_CLIENT_STARTED, _started)
+
     async def async_update(self):
         """Update state"""
-        if not self._client.connected:
-            if self._client.started:
-                await self._state.stop()
-                await self._client.stop()
-            await self._client.start()
-            await self._state.start()
+        pass
 
     async def async_mute_volume(self, mute):
         """Send mute command."""
