@@ -124,6 +124,11 @@ class ArcamFmj(MediaPlayerDevice):
         )
 
     @property
+    def should_poll(self) -> bool:
+        """No need to poll."""
+        return False
+
+    @property
     def name(self):
         """Return the name of the controlled device."""
         return self._name
@@ -162,8 +167,8 @@ class ArcamFmj(MediaPlayerDevice):
             SIGNAL_CLIENT_STARTED, _started)
 
     async def async_update(self):
-        """Update state"""
-        pass
+        """Force update state"""
+        await self._state.update()
 
     async def async_mute_volume(self, mute):
         """Send mute command."""
