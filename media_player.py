@@ -33,6 +33,7 @@ from homeassistant.const import (
     STATE_ON
 )
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.typing import HomeAssistantType, ConfigType
 
 from .const import (
     SIGNAL_CLIENT_DATA,
@@ -52,8 +53,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_platform(hass,
-                               config,
+async def async_setup_platform(hass: HomeAssistantType,
+                               config: ConfigType,
                                async_add_devices,
                                discovery_info=None):
     """Setup platform."""
@@ -61,7 +62,7 @@ async def async_setup_platform(hass,
         config[CONF_HOST],
         config[CONF_PORT])
 
-    #hass.async_add_job(run_client(hass, client))
+    #hass.async_create_task(_run_client(hass, client))
     asyncio.ensure_future(_run_client(hass, client))
 
     async_add_devices([
