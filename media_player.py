@@ -49,7 +49,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST): cv.string,
     vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.positive_int,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    vol.Optional(CONF_ZONE, default=1): cv.positive_int,
+    vol.Optional(CONF_ZONE, default=[1]): cv.ensure_list(cv.positive_int),
     vol.Optional(CONF_SCAN_INTERVAL, default=5): cv.positive_int
 })
 
@@ -69,8 +69,12 @@ async def async_setup_platform(hass: HomeAssistantType,
 
     async_add_devices([
         ArcamFmj(client,
-                 config[CONF_NAME],
-                 config[CONF_ZONE])])
+                 '{}{}'.format(
+                     config[CONF_NAME],
+                     ' - {}'.format(zone) if zone > 1 else ''),
+                 zone)
+        for zone in config[CONF_ZONE]
+    ])
 
 async def _run_client(hass, client, interval):
     def _listen(_):
@@ -152,13 +156,15 @@ class ArcamFmj(MediaPlayerDevice):
             if host == self._client.host:
                 self.async_schedule_update_ha_state()
 
-        async def _update():
-            await self._state.update()
-            self.async_schedule_update_ha_state()
-
         def _started(host):
+            _LOGGER.info("Client connected %s", host)
             if host == self._client.host:
-                self.hass.async_add_job(_update())
+                self.async_schedule_update_ha_state(force_refresh=True)
+
+        def _stopped(host):
+            _LOGGER.info("Client disconneted %s", host)
+            if host == self._client.host:
+                self.async_schedule_update_ha_state(force_refresh=True)
 
         self.hass.helpers.dispatcher.async_dispatcher_connect(
             SIGNAL_CLIENT_DATA, _data)
@@ -166,18 +172,25 @@ class ArcamFmj(MediaPlayerDevice):
         self.hass.helpers.dispatcher.async_dispatcher_connect(
             SIGNAL_CLIENT_STARTED, _started)
 
+        self.hass.helpers.dispatcher.async_dispatcher_connect(
+            SIGNAL_CLIENT_STOPPED, _stopped)
+
     async def async_update(self):
         """Force update state"""
+        _LOGGER.info("Update state %s", self.name)
         await self._state.update()
 
     async def async_mute_volume(self, mute):
         """Send mute command."""
         await self._state.set_mute(mute)
+        self.async_schedule_update_ha_state()
 
     async def async_select_source(self, source):
         """Select a specific source."""
         value = SourceCodes[source]
         await self._state.set_source(value)
+        self.async_schedule_update_ha_state()
+
 
     async def async_select_sound_mode(self, sound_mode):
         """Select a specific source."""
@@ -187,18 +200,22 @@ class ArcamFmj(MediaPlayerDevice):
         else:
             await self._state.set_decode_mode_mch(
                 DecodeModeMCH[sound_mode])
+        self.async_schedule_update_ha_state()
 
     async def async_set_volume_level(self, volume):
         """Set volume level, range 0..1."""
         await self._state.set_volume(round(volume * 99.0))
+        self.async_schedule_update_ha_state()
 
     async def async_volume_up(self):
         """Turn volume up for media player."""
         await self._state.inc_volume()
+        self.async_schedule_update_ha_state()
 
     async def async_volume_down(self):
         """Turn volume up for media player."""
         await self._state.dec_volume()
+        self.async_schedule_update_ha_state()
 
     @property
     def source(self):
