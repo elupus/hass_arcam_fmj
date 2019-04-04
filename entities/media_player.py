@@ -47,16 +47,13 @@ async def run_client(hass, client):
             hass.helpers.dispatcher.async_dispatcher_send(
                 SIGNAL_CLIENT_STARTED, client._host)
 
-            client._listen.add(_listen)
-
-            await client.process()
-
-            client._listen.remove(_listen)
+            with client.listen(_listen):
+                await client.process()
 
             hass.helpers.dispatcher.async_dispatcher_send(
                 SIGNAL_CLIENT_STOPPED, client._host)
         except (ConnectionError, OSError):
-            _LOGGER.debug("Connection failed")
+            _LOGGER.debug("Reconnecting failed")
             await asyncio.sleep(1.0)
             pass
         finally:
