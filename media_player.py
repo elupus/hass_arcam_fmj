@@ -28,9 +28,10 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
     CONF_PORT,
+    CONF_SCAN_INTERVAL,
     CONF_ZONE,
     STATE_OFF,
-    STATE_ON
+    STATE_ON,
 )
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.typing import HomeAssistantType, ConfigType
@@ -49,6 +50,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.positive_int,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_ZONE, default=1): cv.positive_int,
+    vol.Optional(CONF_SCAN_INTERVAL, default=5): cv.positive_int
 })
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,21 +65,21 @@ async def async_setup_platform(hass: HomeAssistantType,
         config[CONF_PORT])
 
     #hass.async_create_task(_run_client(hass, client))
-    asyncio.ensure_future(_run_client(hass, client))
+    asyncio.ensure_future(_run_client(hass, client, config[CONF_SCAN_INTERVAL]))
 
     async_add_devices([
         ArcamFmj(client,
                  config[CONF_NAME],
                  config[CONF_ZONE])])
 
-async def _run_client(hass, client):
+async def _run_client(hass, client, interval):
     def _listen(_):
         hass.helpers.dispatcher.async_dispatcher_send(
             SIGNAL_CLIENT_DATA, client.host)
 
     while True:
         try:
-            await client.start()
+            await asyncio.wait_for(client.start(), timeout=interval)
 
             hass.helpers.dispatcher.async_dispatcher_send(
                 SIGNAL_CLIENT_STARTED, client.host)
@@ -88,7 +90,9 @@ async def _run_client(hass, client):
             hass.helpers.dispatcher.async_dispatcher_send(
                 SIGNAL_CLIENT_STOPPED, client.host)
         except ConnectionFailed:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(interval)
+        except asyncio.TimeoutError:
+            continue
         finally:
             await client.stop()
 
