@@ -2,9 +2,6 @@
 import asyncio
 import logging
 
-import voluptuous as vol
-
-import homeassistant.helpers.config_validation as cv
 from arcam.fmj import (
     ConnectionFailed,
     DecodeMode2CH,
@@ -14,19 +11,15 @@ from arcam.fmj import (
 )
 from arcam.fmj.client import Client
 from arcam.fmj.state import State
+import voluptuous as vol
+
 from homeassistant.components.media_player import (
     PLATFORM_SCHEMA,
     MediaPlayerDevice
 )
 from homeassistant.components.media_player.const import (
-    MEDIA_TYPE_CHANNEL,
-    SUPPORT_NEXT_TRACK,
-    SUPPORT_PLAY_MEDIA,
-    SUPPORT_PREVIOUS_TRACK,
     SUPPORT_SELECT_SOUND_MODE,
     SUPPORT_SELECT_SOURCE,
-    SUPPORT_TURN_OFF,
-    SUPPORT_TURN_ON,
     SUPPORT_VOLUME_MUTE,
     SUPPORT_VOLUME_SET,
     SUPPORT_VOLUME_STEP
@@ -39,6 +32,7 @@ from homeassistant.const import (
     STATE_OFF,
     STATE_ON
 )
+import homeassistant.helpers.config_validation as cv
 
 from .const import (
     SIGNAL_CLIENT_DATA,
@@ -46,8 +40,8 @@ from .const import (
     SIGNAL_CLIENT_STOPPED
 )
 
-DEFAULT_PORT=50000
-DEFAULT_NAME='Arcam FMJ'
+DEFAULT_PORT = 50000
+DEFAULT_NAME = 'Arcam FMJ'
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST): cv.string,
@@ -62,39 +56,38 @@ async def async_setup_platform(hass,
                                config,
                                async_add_devices,
                                discovery_info=None):
-
+    """Setup platform."""
     client = Client(
         config[CONF_HOST],
         config[CONF_PORT])
 
     #hass.async_add_job(run_client(hass, client))
-    asyncio.ensure_future(run_client(hass, client))
+    asyncio.ensure_future(_run_client(hass, client))
 
     async_add_devices([
         ArcamFmj(client,
                  config[CONF_NAME],
                  config[CONF_ZONE])])
 
-async def run_client(hass, client):
-    def _listen(packet):
+async def _run_client(hass, client):
+    def _listen(_):
         hass.helpers.dispatcher.async_dispatcher_send(
-            SIGNAL_CLIENT_DATA, client._host)
+            SIGNAL_CLIENT_DATA, client.host)
 
     while True:
         try:
             await client.start()
 
             hass.helpers.dispatcher.async_dispatcher_send(
-                SIGNAL_CLIENT_STARTED, client._host)
+                SIGNAL_CLIENT_STARTED, client.host)
 
             with client.listen(_listen):
                 await client.process()
 
             hass.helpers.dispatcher.async_dispatcher_send(
-                SIGNAL_CLIENT_STOPPED, client._host)
+                SIGNAL_CLIENT_STOPPED, client.host)
         except ConnectionFailed:
             await asyncio.sleep(1.0)
-            pass
         finally:
             await client.stop()
 
@@ -110,7 +103,6 @@ class ArcamFmj(MediaPlayerDevice):
         self._state = State(client, zone)
         self._name = name
         self._support = (SUPPORT_SELECT_SOURCE |
-                         SUPPORT_TURN_OFF |
                          SUPPORT_VOLUME_SET |
                          SUPPORT_SELECT_SOUND_MODE |
                          SUPPORT_VOLUME_MUTE |
@@ -118,27 +110,25 @@ class ArcamFmj(MediaPlayerDevice):
 
     def _get_2ch(self):
         """Return if source is 2 channel or not"""
-        f, _ = self._state.get_incoming_audio_format()
-        if (f == IncomingAudioFormat.PCM or
-            f == IncomingAudioFormat.ANALOGUE_DIRECT or
-            f == None):
-            return True
-        else:
-            return False
-
+        audio_format, _ = self._state.get_incoming_audio_format()
+        return bool(
+            audio_format in (
+                IncomingAudioFormat.PCM,
+                IncomingAudioFormat.ANALOGUE_DIRECT,
+                None)
+        )
 
     @property
     def name(self):
         """Return the name of the controlled device."""
-        return self._name            
+        return self._name
 
     @property
     def state(self):
         """Return the state of the device."""
         if self._state.get_power():
             return STATE_ON
-        else:
-            return STATE_OFF
+        return STATE_OFF
 
     @property
     def supported_features(self):
@@ -149,7 +139,7 @@ class ArcamFmj(MediaPlayerDevice):
         """Once registed add listener for events."""
 
         def _data(host):
-            if host == self._client._host:
+            if host == self._client.host:
                 self.async_schedule_update_ha_state()
 
         async def _update():
@@ -157,7 +147,7 @@ class ArcamFmj(MediaPlayerDevice):
             self.async_schedule_update_ha_state()
 
         def _started(host):
-            if host == self._client._host:
+            if host == self._client.host:
                 self.hass.async_add_job(_update())
 
         self.hass.helpers.dispatcher.async_dispatcher_connect(
@@ -206,8 +196,7 @@ class ArcamFmj(MediaPlayerDevice):
         value = self._state.get_source()
         if value:
             return value.name
-        else:
-            return None
+        return None
 
     @property
     def source_list(self):
@@ -223,16 +212,14 @@ class ArcamFmj(MediaPlayerDevice):
             value = self._state.get_decode_mode_mch()
         if value:
             return value.name
-        else:
-            return None
+        return None
 
     @property
     def sound_mode_list(self):
         """List of available sound modes."""
         if self._get_2ch():
             return [x.name for x in DecodeMode2CH]
-        else:
-            return [x.name for x in DecodeModeMCH]
+        return [x.name for x in DecodeModeMCH]
 
     @property
     def is_volume_muted(self):
@@ -247,8 +234,7 @@ class ArcamFmj(MediaPlayerDevice):
         value = self._state.get_volume()
         if value:
             return value / 99.0
-        else:
-            return None
+        return None
 
     @property
     def media_title(self):
@@ -256,5 +242,4 @@ class ArcamFmj(MediaPlayerDevice):
         value = self._state.get_source()
         if value:
             return value.name
-        else:
-            return None
+        return None
