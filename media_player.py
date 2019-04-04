@@ -152,6 +152,8 @@ class ArcamFmj(MediaPlayerDevice):
     async def async_added_to_hass(self):
         """Once registed add listener for events."""
 
+        await self._state.start()
+
         def _data(host):
             if host == self._client.host:
                 self.async_schedule_update_ha_state()
