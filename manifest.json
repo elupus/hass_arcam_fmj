@@ -1,0 +1,10 @@
+{
+  "domain": "arcam_fmj",
+  "name": "Arcam FMJ Receiver control",
+  "documentation": "https://github.com/elupus/hass_arcam_fmj",
+  "requirements": [
+    "arcam-fmj==0.1.0"
+  ],
+  "dependencies": [],
+  "codeowners": []
+}
