@@ -89,17 +89,19 @@ async def _run_client(hass, client, interval):
             hass.helpers.dispatcher.async_dispatcher_send(
                 SIGNAL_CLIENT_STARTED, client.host)
 
-            with client.listen(_listen):
-                await client.process()
+            try:
+                with client.listen(_listen):
+                    await client.process()
+            finally:
+                await client.stop()
 
-            hass.helpers.dispatcher.async_dispatcher_send(
-                SIGNAL_CLIENT_STOPPED, client.host)
+                hass.helpers.dispatcher.async_dispatcher_send(
+                    SIGNAL_CLIENT_STOPPED, client.host)
+
         except ConnectionFailed:
             await asyncio.sleep(interval)
         except asyncio.TimeoutError:
             continue
-        finally:
-            await client.stop()
 
 
 
