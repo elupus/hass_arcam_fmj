@@ -18,6 +18,7 @@ from homeassistant.components.media_player import (
     MediaPlayerDevice
 )
 from homeassistant.components.media_player.const import (
+    MEDIA_TYPE_MUSIC,
     SUPPORT_SELECT_SOUND_MODE,
     SUPPORT_SELECT_SOURCE,
     SUPPORT_VOLUME_MUTE,
@@ -266,9 +267,46 @@ class ArcamFmj(MediaPlayerDevice):
         return None
 
     @property
+    def media_content_type(self):
+        """Content type of current playing media."""
+        source = self._state.get_source()
+        if source == SourceCodes.DAB:
+            return MEDIA_TYPE_MUSIC
+        elif source == SourceCodes.FM:
+            return MEDIA_TYPE_MUSIC
+        else:
+            return None
+
+    @property
+    def media_channel(self):
+        """Channel currently playing."""
+        source = self._state.get_source()
+        if source == SourceCodes.DAB:
+            return self._state.get_dab_station()
+        elif source == SourceCodes.FM:
+            return self._state.get_rds_information()
+        else:
+            return None
+
+    @property
+    def media_artist(self):
+        """Artist of current playing media, music track only."""
+        source = self._state.get_source()
+        if source == SourceCodes.DAB:
+            return self._state.get_dls_pdt()
+        else:
+            return None
+
+    @property
     def media_title(self):
         """Title of current playing media."""
-        value = self._state.get_source()
-        if value:
-            return value.name
-        return None
+        source = self._state.get_source()
+        if source is None:
+            return None
+
+        channel = self.media_channel
+
+        if channel:
+            return "{} - {}".format(source.name, channel)
+        else:
+            return source.name
