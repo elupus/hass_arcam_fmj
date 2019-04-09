@@ -51,14 +51,23 @@ from .const import (
 DEFAULT_PORT = 50000
 DEFAULT_NAME = 'Arcam FMJ'
 
+ZONE_SCHEMA = vol.Schema({
+    vol.Optional(CONF_NAME): cv.string,
+    vol.Optional(SERVICE_TURN_ON): cv.SERVICE_SCHEMA
+})
+
+def _optional_zone(value):
+    if value:
+        return ZONE_SCHEMA(value)
+    return ZONE_SCHEMA({})
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST): cv.string,
     vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.positive_int,
-    vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    vol.Optional(CONF_ZONE, default=[1]): cv.ensure_list(cv.positive_int),
+    vol.Optional(CONF_ZONE): {
+        vol.In([1, 2]): _optional_zone
+    },
     vol.Optional(CONF_SCAN_INTERVAL, default=5): cv.positive_int,
-    vol.Optional(SERVICE_TURN_ON): cv.SERVICE_SCHEMA,
-    vol.Optional(SERVICE_TURN_OFF): cv.SERVICE_SCHEMA,
 })
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,13 +86,10 @@ async def async_setup_platform(hass: HomeAssistantType,
 
     async_add_devices([
         ArcamFmj(client,
-                 '{}{}'.format(
-                     config[CONF_NAME],
-                     ' - {}'.format(zone) if zone > 1 else ''),
+                 zone_config.get(CONF_NAME, '{} - {}'.format(DEFAULT_NAME, zone)),
                  zone,
-                 config.get(SERVICE_TURN_ON),
-                 config.get(SERVICE_TURN_OFF))
-        for zone in config[CONF_ZONE]
+                 zone_config.get(SERVICE_TURN_ON))
+        for zone, zone_config in config[CONF_ZONE].items()
     ])
 
 async def _run_client(hass, client, interval):
@@ -120,25 +126,20 @@ class ArcamFmj(MediaPlayerDevice):
                  client: Client,
                  name: str,
                  zone: int,
-                 turn_on: ConfigType,
-                 turn_off: ConfigType):
+                 turn_on: ConfigType):
         """Initialize device."""
         super().__init__()
         self._client = client
         self._state = State(client, zone)
         self._name = name
         self._turn_on = turn_on
-        self._turn_off = turn_off
         self._support = (SUPPORT_SELECT_SOURCE |
                          SUPPORT_VOLUME_SET |
-                         SUPPORT_SELECT_SOUND_MODE |
                          SUPPORT_VOLUME_MUTE |
-                         SUPPORT_VOLUME_STEP)
-        if turn_on:
-            self._support |= SUPPORT_TURN_ON
-        if turn_off:
-            self._support |= SUPPORT_TURN_OFF
-
+                         SUPPORT_VOLUME_STEP |
+                         SUPPORT_TURN_OFF)
+        if zone == 1:
+            self._support |= SUPPORT_SELECT_SOUND_MODE
 
     def _get_2ch(self):
         """Return if source is 2 channel or not"""
@@ -170,7 +171,11 @@ class ArcamFmj(MediaPlayerDevice):
     @property
     def supported_features(self):
         """Flag media player features that are supported."""
-        return self._support
+        support = self._support
+        if (self._state.get_power() is not None or
+                self._turn_on):
+            support |= SUPPORT_TURN_ON
+        return support
 
     async def async_added_to_hass(self):
         """Once registed add listener for events."""
@@ -244,34 +249,41 @@ class ArcamFmj(MediaPlayerDevice):
 
     async def async_turn_on(self):
         """Turn the media player on."""
-        await async_call_from_config(
-            self.hass, self._turn_on,
-            variables=None, blocking=True,
-            validate_config=False)
+        if self._state.get_power() is not None:
+            _LOGGER.info("Turning on device using connection")
+            await self._state.set_power(True)
+        elif self._turn_on:
+            _LOGGER.info("Turning on device using service call")
+            await async_call_from_config(
+                self.hass, self._turn_on,
+                variables=None, blocking=True,
+                validate_config=False)
+        else:
+            _LOGGER.error("Unable to turn on")
 
     async def async_turn_off(self):
         """Turn the media player off."""
-        await async_call_from_config(
-            self.hass, self._turn_off,
-            variables=None, blocking=True,
-            validate_config=False)
+        await self._state.set_power(False)
 
     @property
     def source(self):
         """Return the current input source."""
         value = self._state.get_source()
-        if value:
-            return value.name
-        return None
+        if value is None:
+            return None
+        return value.name
 
     @property
     def source_list(self):
         """List of available input sources."""
-        return [x.name for x in SourceCodes]
+        return [x.name for x in self._state.get_source_list()]
 
     @property
     def sound_mode(self):
         """Name of the current sound mode."""
+        if self._state.zn != 1:
+            return None
+
         if self._get_2ch():
             value = self._state.get_decode_mode_2ch()
         else:
@@ -283,6 +295,9 @@ class ArcamFmj(MediaPlayerDevice):
     @property
     def sound_mode_list(self):
         """List of available sound modes."""
+        if self._state.zn != 1:
+            return None
+
         if self._get_2ch():
             return [x.name for x in DecodeMode2CH]
         return [x.name for x in DecodeModeMCH]
