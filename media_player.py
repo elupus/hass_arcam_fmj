@@ -104,7 +104,6 @@ async def _run_client(hass, client, interval):
             continue
 
 
-
 class ArcamFmj(MediaPlayerDevice):
     """Representation of a media device."""
 
@@ -273,31 +272,34 @@ class ArcamFmj(MediaPlayerDevice):
         """Content type of current playing media."""
         source = self._state.get_source()
         if source == SourceCodes.DAB:
-            return MEDIA_TYPE_MUSIC
+            value = MEDIA_TYPE_MUSIC
         elif source == SourceCodes.FM:
-            return MEDIA_TYPE_MUSIC
+            value = MEDIA_TYPE_MUSIC
         else:
-            return None
+            value = None
+        return value
 
     @property
     def media_channel(self):
         """Channel currently playing."""
         source = self._state.get_source()
         if source == SourceCodes.DAB:
-            return self._state.get_dab_station()
+            value = self._state.get_dab_station()
         elif source == SourceCodes.FM:
-            return self._state.get_rds_information()
+            value = self._state.get_rds_information()
         else:
-            return None
+            value = None
+        return value
 
     @property
     def media_artist(self):
         """Artist of current playing media, music track only."""
         source = self._state.get_source()
         if source == SourceCodes.DAB:
-            return self._state.get_dls_pdt()
+            value = self._state.get_dls_pdt()
         else:
-            return None
+            value = None
+        return value
 
     @property
     def media_title(self):
@@ -309,6 +311,7 @@ class ArcamFmj(MediaPlayerDevice):
         channel = self.media_channel
 
         if channel:
-            return "{} - {}".format(source.name, channel)
+            value = "{} - {}".format(source.name, channel)
         else:
-            return source.name
+            value = source.name
+        return value
