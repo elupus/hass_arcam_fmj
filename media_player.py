@@ -21,6 +21,8 @@ from homeassistant.components.media_player.const import (
     MEDIA_TYPE_MUSIC,
     SUPPORT_SELECT_SOUND_MODE,
     SUPPORT_SELECT_SOURCE,
+    SUPPORT_TURN_ON,
+    SUPPORT_TURN_OFF,
     SUPPORT_VOLUME_MUTE,
     SUPPORT_VOLUME_SET,
     SUPPORT_VOLUME_STEP
@@ -31,11 +33,14 @@ from homeassistant.const import (
     CONF_PORT,
     CONF_SCAN_INTERVAL,
     CONF_ZONE,
+    SERVICE_TURN_ON,
+    SERVICE_TURN_OFF,
     STATE_OFF,
     STATE_ON,
 )
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.typing import HomeAssistantType, ConfigType
+from homeassistant.helpers.service import async_call_from_config
 
 from .const import (
     SIGNAL_CLIENT_DATA,
@@ -51,7 +56,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.positive_int,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_ZONE, default=[1]): cv.ensure_list(cv.positive_int),
-    vol.Optional(CONF_SCAN_INTERVAL, default=5): cv.positive_int
+    vol.Optional(CONF_SCAN_INTERVAL, default=5): cv.positive_int,
+    vol.Optional(SERVICE_TURN_ON): cv.SERVICE_SCHEMA,
+    vol.Optional(SERVICE_TURN_OFF): cv.SERVICE_SCHEMA,
 })
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,7 +80,9 @@ async def async_setup_platform(hass: HomeAssistantType,
                  '{}{}'.format(
                      config[CONF_NAME],
                      ' - {}'.format(zone) if zone > 1 else ''),
-                 zone)
+                 zone,
+                 config.get(SERVICE_TURN_ON),
+                 config.get(SERVICE_TURN_OFF))
         for zone in config[CONF_ZONE]
     ])
 
@@ -107,17 +116,29 @@ async def _run_client(hass, client, interval):
 class ArcamFmj(MediaPlayerDevice):
     """Representation of a media device."""
 
-    def __init__(self, client: Client, name: str, zone: int):
+    def __init__(self,
+                 client: Client,
+                 name: str,
+                 zone: int,
+                 turn_on: ConfigType,
+                 turn_off: ConfigType):
         """Initialize device."""
         super().__init__()
         self._client = client
         self._state = State(client, zone)
         self._name = name
+        self._turn_on = turn_on
+        self._turn_off = turn_off
         self._support = (SUPPORT_SELECT_SOURCE |
                          SUPPORT_VOLUME_SET |
                          SUPPORT_SELECT_SOUND_MODE |
                          SUPPORT_VOLUME_MUTE |
                          SUPPORT_VOLUME_STEP)
+        if turn_on:
+            self._support |= SUPPORT_TURN_ON
+        if turn_off:
+            self._support |= SUPPORT_TURN_OFF
+
 
     def _get_2ch(self):
         """Return if source is 2 channel or not"""
@@ -220,6 +241,20 @@ class ArcamFmj(MediaPlayerDevice):
         """Turn volume up for media player."""
         await self._state.dec_volume()
         self.async_schedule_update_ha_state()
+
+    async def async_turn_on(self):
+        """Turn the media player on."""
+        await async_call_from_config(
+            self.hass, self._turn_on,
+            variables=None, blocking=True,
+            validate_config=False)
+
+    async def async_turn_off(self):
+        """Turn the media player off."""
+        await async_call_from_config(
+            self.hass, self._turn_off,
+            variables=None, blocking=True,
+            validate_config=False)
 
     @property
     def source(self):
