@@ -3,7 +3,7 @@
   "name": "Arcam FMJ Receiver control",
   "documentation": "https://github.com/elupus/hass_arcam_fmj",
   "requirements": [
-    "arcam-fmj==0.3.1"
+    "arcam-fmj==0.4.1"
   ],
   "dependencies": [],
   "codeowners": []
