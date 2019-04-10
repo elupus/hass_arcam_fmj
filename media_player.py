@@ -25,16 +25,16 @@ from homeassistant.components.media_player.const import (
     SUPPORT_TURN_OFF,
     SUPPORT_VOLUME_MUTE,
     SUPPORT_VOLUME_SET,
-    SUPPORT_VOLUME_STEP
+    SUPPORT_VOLUME_STEP,
 )
 from homeassistant.const import (
+    EVENT_HOMEASSISTANT_STOP,
     CONF_HOST,
     CONF_NAME,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
     CONF_ZONE,
     SERVICE_TURN_ON,
-    SERVICE_TURN_OFF,
     STATE_OFF,
     STATE_ON,
 )
@@ -72,6 +72,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup_platform(hass: HomeAssistantType,
                                config: ConfigType,
                                async_add_devices,
@@ -81,7 +82,6 @@ async def async_setup_platform(hass: HomeAssistantType,
         config[CONF_HOST],
         config[CONF_PORT])
 
-    #hass.async_create_task(_run_client(hass, client))
     asyncio.ensure_future(_run_client(hass, client, config[CONF_SCAN_INTERVAL]))
 
     async_add_devices([
@@ -93,11 +93,21 @@ async def async_setup_platform(hass: HomeAssistantType,
     ])
 
 async def _run_client(hass, client, interval):
+    task = asyncio.Task.current_task()
+    run = True
+    async def _stop(_):
+        nonlocal run
+        run = False
+        task.cancel()
+        await task
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop)
+
     def _listen(_):
         hass.helpers.dispatcher.async_dispatcher_send(
             SIGNAL_CLIENT_DATA, client.host)
 
-    while True:
+    while run:
         try:
             await asyncio.wait_for(client.start(), timeout=interval)
 
@@ -192,7 +202,7 @@ class ArcamFmj(MediaPlayerDevice):
                 self.async_schedule_update_ha_state(force_refresh=True)
 
         def _stopped(host):
-            _LOGGER.info("Client disconneted %s", host)
+            _LOGGER.info("Client disconnected %s", host)
             if host == self._client.host:
                 self.async_schedule_update_ha_state(force_refresh=True)
 
