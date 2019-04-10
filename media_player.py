@@ -111,6 +111,7 @@ async def _run_client(hass, client, interval):
         try:
             await asyncio.wait_for(client.start(), timeout=interval)
 
+            _LOGGER.info("Client connected %s", client.host)
             hass.helpers.dispatcher.async_dispatcher_send(
                 SIGNAL_CLIENT_STARTED, client.host)
 
@@ -120,6 +121,7 @@ async def _run_client(hass, client, interval):
             finally:
                 await client.stop()
 
+                _LOGGER.info("Client disconnected %s", client.host)
                 hass.helpers.dispatcher.async_dispatcher_send(
                     SIGNAL_CLIENT_STOPPED, client.host)
 
@@ -197,12 +199,10 @@ class ArcamFmj(MediaPlayerDevice):
                 self.async_schedule_update_ha_state()
 
         def _started(host):
-            _LOGGER.info("Client connected %s", host)
             if host == self._client.host:
                 self.async_schedule_update_ha_state(force_refresh=True)
 
         def _stopped(host):
-            _LOGGER.info("Client disconnected %s", host)
             if host == self._client.host:
                 self.async_schedule_update_ha_state(force_refresh=True)
 
